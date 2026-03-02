@@ -19,6 +19,7 @@ from ouroboros.core.lineage import (
     GenerationRecord,
     OntologyDelta,
     OntologyLineage,
+    RewindRecord,
 )
 from ouroboros.events.lineage import lineage_rewound
 from ouroboros.tui.screens.confirm_rewind import ConfirmRewindScreen
@@ -110,6 +111,7 @@ class GenerationDetailPanel(Static):
 
     selected_generation: reactive[GenerationRecord | None] = reactive(None)
     previous_generation: reactive[GenerationRecord | None] = reactive(None)
+    lineage: reactive[OntologyLineage | None] = reactive(None)
 
     def compose(self) -> ComposeResult:
         yield Label(
@@ -143,6 +145,27 @@ class GenerationDetailPanel(Static):
                 else "dim"
             )
             yield Static(f"[{phase_color}]{gen.phase.value}[/]", classes="value")
+
+        # Show failure error if present
+        if gen.failure_error:
+            with Horizontal(classes="detail-row"):
+                yield Label("Error:", classes="label")
+                yield Static(f"[red]{gen.failure_error}[/]", classes="value")
+
+        # Show [REWOUND] badge if this generation was discarded in a rewind
+        rewind_ctx = self._find_rewind_context(gen.generation_number)
+        if rewind_ctx is not None:
+            with Horizontal(classes="detail-row"):
+                yield Label("Rewind:", classes="label")
+                ts = rewind_ctx.rewound_at
+                time_str = (
+                    ts.strftime("%Y-%m-%d %H:%M") if hasattr(ts, "strftime") else str(ts)[:16]
+                )
+                yield Static(
+                    f"[bold yellow][REWOUND][/] Gen {rewind_ctx.from_generation}"
+                    f"\u2192{rewind_ctx.to_generation} at {time_str}",
+                    classes="value",
+                )
 
         with Horizontal(classes="detail-row"):
             yield Label("Seed ID:", classes="label")
@@ -255,10 +278,23 @@ class GenerationDetailPanel(Static):
                 preview += "\n..."
             yield Static(f"[dim]{preview}[/]", classes="output-preview")
 
+    def _find_rewind_context(self, gen_num: int) -> RewindRecord | None:
+        """Find the RewindRecord that discarded this generation, if any."""
+        if self.lineage is None:
+            return None
+        for rr in self.lineage.rewind_history:
+            for dg in rr.discarded_generations:
+                if dg.generation_number == gen_num:
+                    return rr
+        return None
+
     def watch_selected_generation(self, _new_value: GenerationRecord | None) -> None:
         self.refresh(recompose=True)
 
     def watch_previous_generation(self, _new_value: GenerationRecord | None) -> None:
+        self.refresh(recompose=True)
+
+    def watch_lineage(self, _new_value: OntologyLineage | None) -> None:
         self.refresh(recompose=True)
 
 
@@ -349,7 +385,7 @@ class LineageDetailScreen(Screen[None]):
         gen_num = message.generation_number
         self._selected_gen_num = gen_num
 
-        # Find the generation record
+        # Find the generation record (active or discarded)
         gen = self._find_generation(gen_num)
         if gen is None:
             return
@@ -358,13 +394,20 @@ class LineageDetailScreen(Screen[None]):
         prev_gen = self._find_generation(gen_num - 1)
 
         if self._detail_panel:
+            self._detail_panel.lineage = self._lineage
             self._detail_panel.previous_generation = prev_gen
             self._detail_panel.selected_generation = gen
 
     def _find_generation(self, gen_num: int) -> GenerationRecord | None:
+        """Find generation in active gens or rewind history discarded gens."""
         for g in self._lineage.generations:
             if g.generation_number == gen_num:
                 return g
+        # Also search in discarded generations from rewind history
+        for rr in self._lineage.rewind_history:
+            for dg in rr.discarded_generations:
+                if dg.generation_number == gen_num:
+                    return dg
         return None
 
     def action_go_back(self) -> None:

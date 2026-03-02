@@ -2235,7 +2235,37 @@ class LineageStatusHandler:
                     if gen.evaluation_summary and gen.evaluation_summary.final_approved
                     else "pending"
                 )
-                text_lines.append(f"- Gen {gen.generation_number}: {gen.phase.value} | {status}")
+                error_part = ""
+                if gen.failure_error:
+                    error_part = f" | {gen.failure_error[:60]}"
+                text_lines.append(
+                    f"- Gen {gen.generation_number}: {gen.phase.value} | {status}{error_part}"
+                )
+
+        # Rewind history
+        if lineage.rewind_history:
+            text_lines.append("")
+            text_lines.append("### Rewind History")
+            for rr in lineage.rewind_history:
+                ts = rr.rewound_at
+                time_str = (
+                    ts.strftime("%Y-%m-%d %H:%M") if hasattr(ts, "strftime") else str(ts)[:16]
+                )
+                text_lines.append(
+                    f"- \u21a9 Rewound Gen {rr.from_generation} \u2192 "
+                    f"Gen {rr.to_generation} ({time_str})"
+                )
+                for dg in rr.discarded_generations:
+                    score_part = ""
+                    if dg.evaluation_summary and dg.evaluation_summary.score is not None:
+                        score_part = f" | score={dg.evaluation_summary.score:.2f}"
+                    error_part = ""
+                    if dg.failure_error:
+                        error_part = f" | {dg.failure_error[:60]}"
+                    text_lines.append(
+                        f"  - Gen {dg.generation_number}: "
+                        f"{dg.phase.value}{score_part}{error_part}"
+                    )
 
         return Result.ok(
             MCPToolResult(

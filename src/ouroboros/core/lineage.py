@@ -184,6 +184,20 @@ class GenerationRecord(BaseModel, frozen=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     seed_json: str | None = None
     execution_output: str | None = None
+    failure_error: str | None = None
+
+
+class RewindRecord(BaseModel, frozen=True):
+    """Immutable record of a single rewind operation.
+
+    Captures the discarded generations so TUI can display them
+    as a collapsed subtree under the rewind point.
+    """
+
+    from_generation: int
+    to_generation: int
+    rewound_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    discarded_generations: tuple[GenerationRecord, ...] = ()
 
 
 class OntologyLineage(BaseModel, frozen=True):
@@ -198,6 +212,7 @@ class OntologyLineage(BaseModel, frozen=True):
     lineage_id: str = Field(default_factory=lambda: f"lin_{uuid4().hex[:12]}")
     goal: str
     generations: tuple[GenerationRecord, ...] = Field(default_factory=tuple)
+    rewind_history: tuple[RewindRecord, ...] = Field(default_factory=tuple)
     status: LineageStatus = LineageStatus.ACTIVE
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

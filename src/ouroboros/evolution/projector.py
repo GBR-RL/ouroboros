@@ -12,6 +12,7 @@ from ouroboros.core.lineage import (
     GenerationRecord,
     LineageStatus,
     OntologyLineage,
+    RewindRecord,
 )
 from ouroboros.core.seed import OntologySchema
 from ouroboros.events.base import BaseEvent
@@ -44,6 +45,7 @@ class LineageProjector:
 
         lineage: OntologyLineage | None = None
         generations: dict[int, GenerationRecord] = {}
+        rewind_history: list[RewindRecord] = []
 
         for event in events:
             if event.type == "lineage.created":
@@ -98,6 +100,7 @@ class LineageProjector:
             elif event.type == "lineage.generation.failed":
                 data = event.data
                 gen_num = data["generation_number"]
+                error_msg = data.get("error")
                 try:
                     phase = GenerationPhase(data.get("phase", "failed"))
                 except ValueError:
@@ -105,7 +108,9 @@ class LineageProjector:
 
                 if gen_num in generations:
                     old = generations[gen_num]
-                    generations[gen_num] = old.model_copy(update={"phase": phase})
+                    generations[gen_num] = old.model_copy(
+                        update={"phase": phase, "failure_error": error_msg}
+                    )
                 else:
                     # Generation failed before completion record existed
                     generations[gen_num] = GenerationRecord(
@@ -114,6 +119,7 @@ class LineageProjector:
                         ontology_snapshot=_PENDING_ONTOLOGY,
                         phase=phase,
                         created_at=event.timestamp,
+                        failure_error=error_msg,
                     )
 
             elif event.type == "lineage.converged":
@@ -130,7 +136,22 @@ class LineageProjector:
 
             elif event.type == "lineage.rewound":
                 data = event.data
+                from_gen = data["from_generation"]
                 to_gen = data["to_generation"]
+                # Capture discarded generations before truncating
+                discarded = tuple(
+                    generations[k]
+                    for k in sorted(generations.keys())
+                    if k > to_gen
+                )
+                rewind_history.append(
+                    RewindRecord(
+                        from_generation=from_gen,
+                        to_generation=to_gen,
+                        rewound_at=event.timestamp,
+                        discarded_generations=discarded,
+                    )
+                )
                 # Remove generations after the rewind point
                 generations = {k: v for k, v in generations.items() if k <= to_gen}
                 if lineage is not None:
@@ -139,9 +160,14 @@ class LineageProjector:
         if lineage is None:
             return None
 
-        # Build final lineage with sorted generations
+        # Build final lineage with sorted generations and rewind history
         sorted_records = tuple(generations[k] for k in sorted(generations.keys()))
-        return lineage.model_copy(update={"generations": sorted_records})
+        return lineage.model_copy(
+            update={
+                "generations": sorted_records,
+                "rewind_history": tuple(rewind_history),
+            }
+        )
 
     def find_resume_point(self, events: list[BaseEvent]) -> tuple[int, GenerationPhase]:
         """Determine where to resume from event history.

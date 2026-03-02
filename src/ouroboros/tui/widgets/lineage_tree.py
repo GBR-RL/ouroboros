@@ -21,6 +21,7 @@ from ouroboros.core.lineage import (
     LineageStatus,
     OntologyDelta,
     OntologyLineage,
+    RewindRecord,
 )
 from ouroboros.core.seed import OntologySchema
 
@@ -140,6 +141,11 @@ class LineageTreeWidget(Widget):
         tree.root.label = self._format_root_label()
         self._gen_node_map.clear()
 
+        # Index rewind records by to_generation for insertion after that node
+        rewinds_by_target: dict[int, list[RewindRecord]] = {}
+        for rr in self.lineage.rewind_history:
+            rewinds_by_target.setdefault(rr.to_generation, []).append(rr)
+
         prev_ontology: OntologySchema | None = None
 
         for gen in self.lineage.generations:
@@ -173,9 +179,43 @@ class LineageTreeWidget(Widget):
                 gen_node.add_leaf("  [bold green][CONVERGED][/]")
 
             gen_node.expand()
+
+            # Insert rewind subtrees after the target generation node
+            for rr in rewinds_by_target.get(gen.generation_number, []):
+                self._add_rewind_subtree(tree, rr)
+
             prev_ontology = gen.ontology_snapshot
 
         tree.root.expand()
+
+    def _add_rewind_subtree(
+        self,
+        tree: Tree[dict[str, Any]],
+        rr: RewindRecord,
+    ) -> None:
+        """Add a rewind record as a collapsible subtree under the tree root."""
+        ts = rr.rewound_at
+        time_str = ts.strftime("%m/%d %H:%M") if hasattr(ts, "strftime") else str(ts)[:11]
+        rewind_label = (
+            f"[dim]\u21a9 Rewound (Gen {rr.from_generation}\u2192{rr.to_generation})"
+            f" \u2014 {time_str}[/]"
+        )
+        rewind_node = tree.root.add(rewind_label, data={"rewind": True})
+
+        for dg in rr.discarded_generations:
+            phase_icon = PHASE_ICONS.get(dg.phase, "\u25cb")
+            onto_name = dg.ontology_snapshot.name
+            score_part = ""
+            if dg.evaluation_summary and dg.evaluation_summary.score is not None:
+                score_part = f" score={dg.evaluation_summary.score:.2f}"
+            error_part = ""
+            if dg.failure_error:
+                snippet = dg.failure_error[:50]
+                error_part = f" [red][failed: {snippet}][/]"
+            rewind_node.add_leaf(
+                f"  [dim]{phase_icon} Gen {dg.generation_number}: "
+                f"{onto_name}{score_part}{error_part}[/]"
+            )
 
     def _format_gen_label(
         self,
@@ -200,6 +240,11 @@ class LineageTreeWidget(Widget):
         if prev_ontology is not None:
             delta = OntologyDelta.compute(prev_ontology, gen.ontology_snapshot)
             label_parts.append(f" [dim]sim={delta.similarity:.2f}[/]")
+
+        # Add failure error snippet for failed generations
+        if gen.failure_error:
+            snippet = gen.failure_error[:50]
+            label_parts.append(f" [red][failed: {snippet}][/]")
 
         return "".join(label_parts)
 
