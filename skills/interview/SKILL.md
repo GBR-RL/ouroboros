@@ -37,14 +37,14 @@ Compare the result with the current version in `.claude-plugin/plugin.json`.
       "question": "Ouroboros <latest> is available (current: <local>). Update before starting?",
       "header": "Update",
       "options": [
-        {"label": "Update now", "description": "Run claude plugin install ouroboros@ouroboros to update"},
+        {"label": "Update now", "description": "Update plugin to latest version (restart required to apply)"},
         {"label": "Skip, start interview", "description": "Continue with current version"}
       ],
       "multiSelect": false
     }]
   }
   ```
-  - If "Update now": run `claude plugin install ouroboros@ouroboros` via Bash, then proceed with the interview.
+  - If "Update now": run `claude plugin update ouroboros` via Bash, then tell the user: "Updated! Restart Claude Code to apply, then run `ooo interview` again."
   - If "Skip": proceed immediately.
 - If versions match or the check fails (network error, timeout): **silently skip** and proceed.
 
