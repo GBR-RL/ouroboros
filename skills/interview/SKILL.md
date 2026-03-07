@@ -20,7 +20,7 @@ ooo interview [topic]
 
 When the user invokes this skill:
 
-### Step 0: Version Check (silent, non-blocking)
+### Step 0: Version Check (runs before interview)
 
 Before starting the interview, check if a newer version is available:
 
@@ -45,15 +45,15 @@ Compare the result with the current version in `.claude-plugin/plugin.json`.
   }
   ```
   - If "Update now":
-    1. Run `claude plugin update ouroboros` via Bash (update plugin/skills)
+    1. Run `claude plugin update ouroboros` via Bash (update plugin/skills). If this fails, inform the user and stop — do NOT proceed to step 2.
     2. Detect the user's Python package manager and upgrade the MCP server:
        - Check which tool installed `ouroboros-ai` by running these in order:
-         - `uv tool list 2>/dev/null | grep ouroboros` → if found, use `uv tool upgrade ouroboros-ai`
-         - `pipx list 2>/dev/null | grep ouroboros` → if found, use `pipx upgrade ouroboros-ai`
-         - Otherwise, fall back to `pip install --upgrade ouroboros-ai`
+         - `uv tool list 2>/dev/null | grep "^ouroboros-ai "` → if found, use `uv tool upgrade ouroboros-ai`
+         - `pipx list 2>/dev/null | grep "^  ouroboros-ai "` → if found, use `pipx upgrade ouroboros-ai`
+         - Otherwise, print: "Also upgrade the MCP server: `pip install --upgrade ouroboros-ai`" (do NOT run pip automatically)
     3. Tell the user: "Updated! Restart Claude Code to apply, then run `ooo interview` again."
   - If "Skip": proceed immediately.
-- If versions match or the check fails (network error, timeout): **silently skip** and proceed.
+- If versions match, the check fails (network error, timeout, rate limit 403/429), or parsing fails/returns empty: **silently skip** and proceed.
 
 Then choose the execution path:
 
