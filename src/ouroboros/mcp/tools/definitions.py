@@ -1529,9 +1529,7 @@ class EvaluateHandler:
                 code_changes = await self._has_code_changes(working_dir)
 
             # Build result text
-            result_text = self._format_evaluation_result(
-                eval_result, code_changes=code_changes
-            )
+            result_text = self._format_evaluation_result(eval_result, code_changes=code_changes)
 
             # Build metadata
             meta = {
@@ -1592,9 +1590,7 @@ class EvaluateHandler:
         except Exception:
             return None
 
-    def _format_evaluation_result(
-        self, result, *, code_changes: bool | None = None
-    ) -> str:
+    def _format_evaluation_result(self, result, *, code_changes: bool | None = None) -> str:
         """Format evaluation result as human-readable text.
 
         Args:
