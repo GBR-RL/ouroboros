@@ -63,7 +63,9 @@ fn main() -> std::io::Result<()> {
         .and_then(|i| args.get(i + 1))
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+            let home = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .unwrap_or_else(|_| ".".into());
             PathBuf::from(home).join(".ouroboros/ouroboros.db")
         });
 
